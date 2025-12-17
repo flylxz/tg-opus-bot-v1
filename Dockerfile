@@ -2,8 +2,16 @@
 FROM python:3.11-slim AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential autoconf automake libtool pkg-config \
-    ffmpeg wget git ca-certificates \
+    build-essential \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    libogg-dev \
+    ffmpeg \
+    wget \
+    git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -16,7 +24,7 @@ RUN wget https://downloads.xiph.org/releases/opus/opus-1.6.tar.gz && \
     make -j$(nproc) && \
     make install
 
-# ---------- opus-tools (git, stable) ----------
+# ---------- opus-tools (git) ----------
 RUN git clone https://gitlab.xiph.org/xiph/opus-tools.git && \
     cd opus-tools && \
     ./autogen.sh && \
@@ -28,14 +36,17 @@ RUN git clone https://gitlab.xiph.org/xiph/opus-tools.git && \
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg ca-certificates \
+    ffmpeg \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local /usr/local
 
 WORKDIR /app
 RUN pip install --no-cache-dir \
-    python-telegram-bot==20.7 yt-dlp requests
+    python-telegram-bot==20.7 \
+    yt-dlp \
+    requests
 
 COPY bot.py .
 

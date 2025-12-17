@@ -24,6 +24,9 @@ RUN wget https://downloads.xiph.org/releases/opus/opus-1.6.tar.gz && \
     make -j$(nproc) && \
     make install
 
+# IMPORTANT: make pkg-config see libopus
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+
 # ---------- opus-tools (git) ----------
 RUN git clone https://gitlab.xiph.org/xiph/opus-tools.git && \
     cd opus-tools && \

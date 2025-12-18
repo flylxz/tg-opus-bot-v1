@@ -39,17 +39,15 @@ RUN pkg-config --modversion opus && \
 # Verify FFmpeg has Opus support
 RUN ffmpeg -codecs 2>/dev/null | grep opus || echo "Warning: Opus codec check"
 
-# Create app directory
-WORKDIR /app
-
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY requirements.txt /tmp/requirements.txt
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Copy application files
-COPY telegram_audio_bot.py .
+# Create app directory and copy files
+WORKDIR /app
+COPY . .
 
 # Create directory for temporary files
 RUN mkdir -p /tmp/audio_temp && chmod 777 /tmp/audio_temp

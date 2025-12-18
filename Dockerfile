@@ -45,9 +45,17 @@ COPY requirements.txt /tmp/requirements.txt
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Create app directory and copy files
+# Create app directory
 WORKDIR /app
-COPY . .
+
+# Copy application files explicitly
+COPY telegram_audio_bot.py /app/telegram_audio_bot.py
+
+# Verify file is copied
+RUN ls -la /app/ && \
+    test -f /app/telegram_audio_bot.py && \
+    echo "✅ telegram_audio_bot.py copied successfully" || \
+    (echo "❌ telegram_audio_bot.py NOT found" && exit 1)
 
 # Create directory for temporary files
 RUN mkdir -p /tmp/audio_temp && chmod 777 /tmp/audio_temp

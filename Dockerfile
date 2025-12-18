@@ -1,65 +1,62 @@
-# ================= BUILD STAGE =================
-FROM python:3.11-slim AS build
+FROM python:3.11-slim
 
-# Устанавливаем все необходимые пакеты для сборки
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
     build-essential \
+    wget \
+    tar \
+    pkg-config \
     autoconf \
     automake \
     libtool \
-    pkg-config \
-    libogg-dev \
-    m4 \
-    gettext \
-    ffmpeg \
-    wget \
+    yasm \
+    nasm \
     git \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-# ---------- libopus 1.6 ----------
-RUN wget https://downloads.xiph.org/releases/opus/opus-1.6.tar.gz && \
-    tar xzf opus-1.6.tar.gz && \
-    cd opus-1.6 && \
-    ./configure --disable-shared --enable-static && \
-    make -j$(nproc) && \
-    make install
-
-# Настраиваем pkg-config чтобы видеть libopus
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-
-# ---------- opus-tools ----------
-RUN git clone https://gitlab.xiph.org/xiph/opus-tools.git && \
-    cd opus-tools && \
-    ./autogen.sh && \
-    ./configure && \
-    make -j$(nproc) && \
-    make install
-
-# ================= RUNTIME STAGE =================
-FROM python:3.11-slim
-
-# Устанавливаем только минимальные runtime зависимости
-RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Копируем собранные библиотеки и opus-tools из build stage
-COPY --from=build /usr/local /usr/local
+# Download and install Opus 1.6 from source
+RUN cd /tmp && \
+    wget https://downloads.xiph.org/releases/opus/opus-1.6.tar.gz && \
+    tar -xzf opus-1.6.tar.gz && \
+    cd opus-1.6 && \
+    ./configure --prefix=/usr/local --enable-float-approx && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd / && \
+    rm -rf /tmp/opus-1.6*
 
+# Verify Opus installation
+RUN pkg-config --modversion opus && \
+    echo "Opus installed successfully!"
+
+# Verify FFmpeg has Opus support
+RUN ffmpeg -codecs 2>/dev/null | grep opus || echo "Warning: Opus codec check"
+
+# Create app directory
 WORKDIR /app
 
-# Устанавливаем Python зависимости
-RUN pip install --no-cache-dir \
-    python-telegram-bot==20.7 \
-    yt-dlp \
-    requests
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Копируем скрипт бота
-COPY bot.py .
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Команда запуска бота
-CMD ["python", "bot.py"]
+# Copy application files
+COPY telegram_audio_bot.py .
+
+# Create directory for temporary files
+RUN mkdir -p /tmp/audio_temp && chmod 777 /tmp/audio_temp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Run the bot
+CMD ["python", "-u", "telegram_audio_bot.py"]

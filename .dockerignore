@@ -1,19 +1,9 @@
-# Скачай файл .dockerignore.minimal
-# Переименуй его в .dockerignore
-
-# Или создай вручную:
-cat > .dockerignore << 'EOF'
 .git/
-.env
-venv/
-__pycache__/
-*.log
-.vscode/
-.idea/
-.DS_Store
-EOF
-
-# Коммит
-git add .dockerignore
-git commit -m "Fix .dockerignore"
-git push origin main
+   .env
+   venv/
+   env/
+   __pycache__/
+   *.log
+   .vscode/
+   .idea/
+   .DS_Store

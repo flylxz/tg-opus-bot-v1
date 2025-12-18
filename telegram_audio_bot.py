@@ -20,6 +20,8 @@ from telegram.ext import (
 import requests
 from pathlib import Path
 import tempfile
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Configure logging
 logging.basicConfig(
@@ -42,6 +44,33 @@ BITRATES = {
 
 # Default bitrate from environment or use 24
 DEFAULT_BITRATE = os.environ.get('DEFAULT_BITRATE', '24')
+
+
+# Simple HTTP server for health checks
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health' or self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK - Bot is running')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        # Suppress HTTP logs
+        pass
+
+
+def start_health_server(port=8000):
+    """Start HTTP server for health checks in background thread"""
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        logger.info(f"Health check server started on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        logger.warning(f"Could not start health check server: {e}")
 
 
 class AudioEncoder:
@@ -471,6 +500,10 @@ def main():
     logger.info(f"Starting bot with Opus 1.6")
     logger.info(f"Max file size: {MAX_FILE_SIZE_MB}MB")
     logger.info(f"Default bitrate: {DEFAULT_BITRATE}kbps")
+    
+    # Start health check server in background
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
     
     bot = TelegramAudioBot(TELEGRAM_BOT_TOKEN)
     bot.run()

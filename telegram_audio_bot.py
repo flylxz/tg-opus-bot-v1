@@ -48,8 +48,8 @@ DEFAULT_BITRATE = os.environ.get('DEFAULT_BITRATE', '24')
 # Default voice mode - TRUE for speech optimization by default
 DEFAULT_VOICE_MODE = True
 
-# Encoding timeout in seconds (default: 30 minutes = 1800 seconds)
-ENCODING_TIMEOUT = int(os.environ.get('ENCODING_TIMEOUT', '1800'))
+# Encoding timeout in seconds (default: 40 minutes = 2400 seconds)
+ENCODING_TIMEOUT = int(os.environ.get('ENCODING_TIMEOUT', '2400'))
 
 
 # Simple HTTP server for health checks
@@ -568,7 +568,7 @@ class TelegramAudioBot:
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Download file from URL
-                response = requests.get(url, stream=True, timeout=30)
+                response = requests.get(url, stream=True, timeout=(10, 120))
                 response.raise_for_status()
                 
                 # Check content type

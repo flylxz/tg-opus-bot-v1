@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-MAX_FILE_SIZE_MB = int(os.environ.get('MAX_FILE_SIZE_MB', '50'))
+MAX_FILE_SIZE_MB = int(os.environ.get('MAX_FILE_SIZE_MB', '150'))
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # Available bitrates
@@ -90,11 +90,50 @@ class AudioEncoder:
             return "Unknown"
     
     @staticmethod
+    def get_audio_duration(file_path: str) -> float:
+        """Get audio duration in seconds using ffprobe"""
+        try:
+            result = subprocess.run(
+                [
+                    'ffprobe',
+                    '-v', 'error',
+                    '-show_entries', 'format=duration',
+                    '-of', 'default=noprint_wrappers=1:nokey=1',
+                    file_path
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return float(result.stdout.strip())
+            return 0.0
+        except Exception as e:
+            logger.warning(f"Could not get duration: {e}")
+            return 0.0
+    
+    @staticmethod
+    def format_duration(seconds: float) -> str:
+        """Format duration as MM:SS or HH:MM:SS"""
+        if seconds == 0:
+            return "N/A"
+        
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        else:
+            return f"{minutes}:{secs:02d}"
+    
+    @staticmethod
     def encode_to_opus(
         input_path: str, 
         output_path: str, 
         bitrate: str = "24k",
-        application: str = "audio"
+        application: str = "audio",
+        voice_mode: bool = False
     ) -> tuple[bool, str]:
         """
         Encode audio file to Opus format using FFmpeg with libopus
@@ -104,11 +143,24 @@ class AudioEncoder:
             output_path: Path for output Opus file
             bitrate: Audio bitrate (16k, 24k, or 32k)
             application: Opus application mode (audio, voip, or lowdelay)
+            voice_mode: If True, optimize for speech (voip mode + mono + packet loss)
             
         Returns:
             Tuple of (success, error_message)
         """
         try:
+            # Configure encoding based on voice mode
+            if voice_mode:
+                app_mode = 'voip'       # Optimize for speech
+                packet_loss = '3'       # Packet loss compensation for VoIP
+                channels = '1'          # Mono for speech
+                logger.info("Voice mode: voip application, mono, packet loss compensation")
+            else:
+                app_mode = 'audio'      # Universal mode for music
+                packet_loss = '0'       # No packet loss compensation
+                channels = None         # Keep original channels (stereo)
+                logger.info("Music mode: audio application, original channels")
+            
             # FFmpeg command for Opus encoding
             command = [
                 'ffmpeg',
@@ -117,12 +169,16 @@ class AudioEncoder:
                 '-b:a', bitrate,              # Set bitrate
                 '-vbr', 'on',                 # Enable Variable Bit Rate
                 '-compression_level', '10',   # Maximum compression quality
-                '-application', application,  # Application mode
+                '-application', app_mode,     # voip for speech, audio for music
                 '-frame_duration', '20',      # Frame duration in ms
-                '-packet_loss', '0',          # Packet loss percentage
-                '-y',                         # Overwrite output file
-                output_path
+                '-packet_loss', packet_loss,  # Packet loss percentage
             ]
+            
+            # Add mono downmix for voice mode
+            if channels:
+                command.extend(['-ac', channels])  # Downmix to mono
+            
+            command.extend(['-y', output_path])  # Overwrite output file
             
             logger.info(f"Encoding with command: {' '.join(command)}")
             
@@ -134,7 +190,7 @@ class AudioEncoder:
             )
             
             if result.returncode == 0:
-                logger.info(f"Successfully encoded {input_path} to {output_path}")
+                logger.info(f"Successfully encoded {input_path} with {app_mode} mode")
                 return True, ""
             else:
                 error_msg = result.stderr
@@ -173,7 +229,7 @@ class TelegramAudioBot:
         """Handle /start command"""
         user_id = update.effective_user.id
         if user_id not in self.user_settings:
-            self.user_settings[user_id] = {'bitrate': DEFAULT_BITRATE}
+            self.user_settings[user_id] = {'bitrate': DEFAULT_BITRATE, 'voice_mode': False}
         
         opus_version = self.encoder.check_opus_version()
         
@@ -265,7 +321,7 @@ class TelegramAudioBot:
             f"⚙️ Уровень сжатия: 10 (максимальный)\n"
             f"📱 Режим: Audio (универсальный)\n"
             f"⏱️ Длина фрейма: 20ms\n"
-            f"📏 Макс. размер файла: 50 MB\n\n"
+            f"📏 Макс. размер файла: 150 MB\n\n"
             f"Используй /bitrate для изменения битрейта"
         )
         await update.message.reply_text(settings_text, parse_mode='Markdown')

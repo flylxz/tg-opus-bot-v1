@@ -183,7 +183,7 @@ class AudioEncoder:
             # Add BWE (Bandwidth Extension) support - NEW in Opus 1.6!
             # Improves quality at low bitrates by extending bandwidth
             command.extend([
-                '-osce_bwe', '1',             # Enable OSCE Bandwidth Extension
+                '-enable_osce_bwe', '1',             # Enable OSCE Bandwidth Extension
                 '-complexity', '10'            # Decoder complexity (must be 4+, we use 10 for best quality)
             ])
             

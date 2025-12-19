@@ -48,6 +48,9 @@ DEFAULT_BITRATE = os.environ.get('DEFAULT_BITRATE', '24')
 # Default voice mode - TRUE for speech optimization by default
 DEFAULT_VOICE_MODE = True
 
+# Encoding timeout in seconds (default: 30 minutes = 1800 seconds)
+ENCODING_TIMEOUT = int(os.environ.get('ENCODING_TIMEOUT', '1800'))
+
 
 # Simple HTTP server for health checks
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -189,7 +192,7 @@ class AudioEncoder:
                 command,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=ENCODING_TIMEOUT  # Configurable timeout (default 30 min)
             )
             
             if result.returncode == 0:
@@ -201,7 +204,7 @@ class AudioEncoder:
                 return False, error_msg
                 
         except subprocess.TimeoutExpired:
-            error_msg = "Encoding timeout exceeded (5 minutes)"
+            error_msg = f"Encoding timeout exceeded ({ENCODING_TIMEOUT // 60} minutes)"
             logger.error(error_msg)
             return False, error_msg
         except Exception as e:
@@ -695,6 +698,8 @@ def main():
     logger.info(f"Starting bot with Opus 1.6")
     logger.info(f"Max file size: {MAX_FILE_SIZE_MB}MB")
     logger.info(f"Default bitrate: {DEFAULT_BITRATE}kbps")
+    logger.info(f"Default voice mode: {'ON (voip, mono)' if DEFAULT_VOICE_MODE else 'OFF (audio, stereo)'}")
+    logger.info(f"Encoding timeout: {ENCODING_TIMEOUT} seconds ({ENCODING_TIMEOUT // 60} minutes)")
     
     # Start health check server in background
     health_thread = threading.Thread(target=start_health_server, daemon=True)

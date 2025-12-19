@@ -160,12 +160,12 @@ class AudioEncoder:
                 app_mode = 'voip'       # Optimize for speech
                 packet_loss = '3'       # Packet loss compensation for VoIP
                 channels = '1'          # Mono for speech
-                logger.info("Voice mode: voip application, mono, packet loss compensation")
+                logger.info("Voice mode: voip application, mono, packet loss compensation, BWE enabled")
             else:
                 app_mode = 'audio'      # Universal mode for music
                 packet_loss = '0'       # No packet loss compensation
                 channels = None         # Keep original channels (stereo)
-                logger.info("Music mode: audio application, original channels")
+                logger.info("Music mode: audio application, original channels, BWE enabled")
             
             # FFmpeg command for Opus encoding
             command = [
@@ -179,6 +179,13 @@ class AudioEncoder:
                 '-frame_duration', '20',      # Frame duration in ms
                 '-packet_loss', packet_loss,  # Packet loss percentage
             ]
+            
+            # Add BWE (Bandwidth Extension) support - NEW in Opus 1.6!
+            # Improves quality at low bitrates by extending bandwidth
+            command.extend([
+                '-osce_bwe', '1',             # Enable OSCE Bandwidth Extension
+                '-complexity', '10'            # Decoder complexity (must be 4+, we use 10 for best quality)
+            ])
             
             # Add mono downmix for voice mode
             if channels:
@@ -361,9 +368,12 @@ class TelegramAudioBot:
             f"📦 Кодек: Opus {opus_version} (libopus)\n"
             f"🎚️ VBR: Включен\n"
             f"⚙️ Сжатие: 10 (максимальное)\n"
+            f"🌊 BWE: Включен (Opus 1.6)\n"
+            f"🧮 Complexity: 10\n"
             f"📡 Packet Loss: {packet_loss}\n"
             f"⏱️ Фрейм: 20ms\n"
-            f"📏 Макс. размер: {MAX_FILE_SIZE_MB} MB\n\n"
+            f"📏 Макс. размер: {MAX_FILE_SIZE_MB} MB\n"
+            f"⏲️ Timeout: {ENCODING_TIMEOUT // 60} мин\n\n"
             f"Команды:\n"
             f"• /bitrate - изменить битрейт\n"
             f"• /voice - переключить режим (голос/музыка)"

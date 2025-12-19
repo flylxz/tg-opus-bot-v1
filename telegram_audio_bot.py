@@ -45,6 +45,9 @@ BITRATES = {
 # Default bitrate from environment or use 24
 DEFAULT_BITRATE = os.environ.get('DEFAULT_BITRATE', '24')
 
+# Default voice mode - TRUE for speech optimization by default
+DEFAULT_VOICE_MODE = True
+
 
 # Simple HTTP server for health checks
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -229,23 +232,32 @@ class TelegramAudioBot:
         """Handle /start command"""
         user_id = update.effective_user.id
         if user_id not in self.user_settings:
-            self.user_settings[user_id] = {'bitrate': DEFAULT_BITRATE, 'voice_mode': False}
+            self.user_settings[user_id] = {
+                'bitrate': DEFAULT_BITRATE,
+                'voice_mode': DEFAULT_VOICE_MODE  # Voice mode ON by default
+            }
         
         opus_version = self.encoder.check_opus_version()
         
         welcome_message = (
             "🎵 *Audio to Opus Encoder Bot*\n"
             f"_Powered by Opus {opus_version}_\n\n"
-            "Отправь мне аудиофайл или ссылку на аудио, "
-            "и я конвертирую его в формат Opus!\n\n"
+            "Отправь мне:\n"
+            "🎧 Аудиофайл\n"
+            "🎤 Голосовое сообщение\n"
+            "🔗 Ссылку на аудио\n"
+            "📎 Пересылку из другого чата\n\n"
+            "🎤 *Режим голоса ВКЛЮЧЕН по умолчанию*\n"
+            "Оптимизировано для речи (voip + mono)\n\n"
             "*Команды:*\n"
             "/start - Показать это сообщение\n"
             "/help - Справка\n"
             "/bitrate - Выбрать битрейт (16, 24, 32 kbps)\n"
+            "/voice - Переключить режим (голос/музыка) 🎤/🎵\n"
             "/settings - Текущие настройки\n\n"
             "*Поддерживаемые форматы:*\n"
             "MP3, WAV, FLAC, AAC, OGG, M4A, WMA и другие!\n\n"
-            "*Максимальный размер:* 50MB"
+            f"*Максимальный размер:* {MAX_FILE_SIZE_MB}MB"
         )
         await update.message.reply_text(welcome_message, parse_mode='Markdown')
     
@@ -254,15 +266,27 @@ class TelegramAudioBot:
         help_text = (
             "*Как использовать:*\n\n"
             "1️⃣ Отправь аудиофайл боту\n"
-            "2️⃣ Или отправь прямую ссылку на аудио\n"
-            "3️⃣ Выбери битрейт командой /bitrate\n\n"
+            "2️⃣ Или отправь голосовое сообщение 🎤\n"
+            "3️⃣ Или отправь прямую ссылку на аудио\n"
+            "4️⃣ Или перешли аудио из другого чата ➡️\n\n"
+            "🎤 *Режим голоса (по умолчанию):*\n"
+            "• Application: `voip` (оптимизация для речи)\n"
+            "• Каналы: Mono (экономия ~50% места)\n"
+            "• Packet Loss: 3% компенсация\n"
+            "• Лучше для: речи, подкастов, аудиокниг\n\n"
+            "🎵 *Режим музыки:*\n"
+            "• Application: `audio` (универсальный)\n"
+            "• Каналы: Stereo (полное качество)\n"
+            "• Лучше для: музыки, стерео записей\n\n"
+            "*Переключение режимов:*\n"
+            "Используй /voice для переключения\n\n"
             "*Примеры ссылок:*\n"
             "`https://example.com/audio.mp3`\n"
             "`http://example.com/music/song.wav`\n\n"
             "*Доступные битрейты:*\n"
-            "• 16 kbps - для речи\n"
+            "• 16 kbps - для речи (рекомендуется в режиме голоса)\n"
             "• 24 kbps - универсальный (по умолчанию)\n"
-            "• 32 kbps - высокое качество\n\n"
+            "• 32 kbps - высокое качество для музыки\n\n"
             "*Кодек:*\n"
             "Opus 1.6 (оптимизирован для речи и музыки)"
         )
@@ -311,20 +335,90 @@ class TelegramAudioBot:
         """Handle /settings command"""
         user_id = update.effective_user.id
         bitrate = self.user_settings.get(user_id, {}).get('bitrate', DEFAULT_BITRATE)
+        voice_mode = self.user_settings.get(user_id, {}).get('voice_mode', DEFAULT_VOICE_MODE)
         opus_version = self.encoder.check_opus_version()
+        
+        # Voice mode status
+        if voice_mode:
+            mode_icon = "🎤"
+            mode_name = "Голос (voip)"
+            mode_desc = "Моно, оптимизация для речи"
+            packet_loss = "3% (компенсация)"
+        else:
+            mode_icon = "🎵"
+            mode_name = "Музыка (audio)"
+            mode_desc = "Стерео, полное качество"
+            packet_loss = "0%"
         
         settings_text = (
             "*Текущие настройки:*\n\n"
             f"🔊 Битрейт: *{bitrate} kbps*\n"
+            f"{mode_icon} Режим: *{mode_name}*\n"
+            f"   └ {mode_desc}\n"
             f"📦 Кодек: Opus {opus_version} (libopus)\n"
             f"🎚️ VBR: Включен\n"
-            f"⚙️ Уровень сжатия: 10 (максимальный)\n"
-            f"📱 Режим: Audio (универсальный)\n"
-            f"⏱️ Длина фрейма: 20ms\n"
-            f"📏 Макс. размер файла: 150 MB\n\n"
-            f"Используй /bitrate для изменения битрейта"
+            f"⚙️ Сжатие: 10 (максимальное)\n"
+            f"📡 Packet Loss: {packet_loss}\n"
+            f"⏱️ Фрейм: 20ms\n"
+            f"📏 Макс. размер: {MAX_FILE_SIZE_MB} MB\n\n"
+            f"Команды:\n"
+            f"• /bitrate - изменить битрейт\n"
+            f"• /voice - переключить режим (голос/музыка)"
         )
         await update.message.reply_text(settings_text, parse_mode='Markdown')
+    
+    async def voice_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /voice command - toggle voice mode (voip optimization)"""
+        user_id = update.effective_user.id
+        
+        # Initialize if needed
+        if user_id not in self.user_settings:
+            self.user_settings[user_id] = {
+                'bitrate': DEFAULT_BITRATE,
+                'voice_mode': DEFAULT_VOICE_MODE
+            }
+        
+        # Toggle voice mode
+        current_voice_mode = self.user_settings[user_id].get('voice_mode', DEFAULT_VOICE_MODE)
+        new_voice_mode = not current_voice_mode
+        self.user_settings[user_id]['voice_mode'] = new_voice_mode
+        
+        if new_voice_mode:
+            # Voice mode ON
+            message = (
+                "🎤 *Режим голоса ВКЛЮЧЕН*\n\n"
+                "*Оптимизация для речи:*\n"
+                "✅ Application: `voip` (для голоса)\n"
+                "✅ Каналы: Mono (экономия ~50%)\n"
+                "✅ Packet Loss: 3% (компенсация)\n"
+                "✅ Частоты: речевой диапазон (80Hz-8kHz)\n\n"
+                "*Идеально для:*\n"
+                "🎤 Голосовых сообщений\n"
+                "🎙️ Подкастов\n"
+                "📚 Аудиокниг\n"
+                "🗣️ Записей речи\n"
+                "📞 Звонков и интервью\n\n"
+                "*Рекомендуемый битрейт:* 16-24 kbps\n"
+                "Используй /bitrate для изменения"
+            )
+        else:
+            # Voice mode OFF (Music mode ON)
+            message = (
+                "🎵 *Режим музыки ВКЛЮЧЕН*\n\n"
+                "*Универсальное качество:*\n"
+                "✅ Application: `audio` (универсальный)\n"
+                "✅ Каналы: Stereo (полное качество)\n"
+                "✅ Частоты: полный диапазон (20Hz-20kHz)\n\n"
+                "*Идеально для:*\n"
+                "🎵 Музыки\n"
+                "🎧 Стерео записей\n"
+                "🎬 Звуковых дорожек\n"
+                "🎸 Концертов\n\n"
+                "*Рекомендуемый битрейт:* 24-32 kbps\n"
+                "Используй /bitrate для изменения"
+            )
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
     
     async def handle_audio_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle audio file uploads"""
@@ -374,13 +468,26 @@ class TelegramAudioBot:
                 output_filename = Path(input_filename).stem + ".opus"
                 output_path = os.path.join(temp_dir, output_filename)
                 
+                # Get voice mode
+                voice_mode = self.user_settings.get(user_id, {}).get('voice_mode', DEFAULT_VOICE_MODE)
+                mode_icon = "🎤" if voice_mode else "🎵"
+                mode_text = "voip, mono" if voice_mode else "audio, stereo"
+                
+                # Get audio duration
+                duration_seconds = self.encoder.get_audio_duration(input_path)
+                duration_str = self.encoder.format_duration(duration_seconds)
+                
                 # Encode to Opus
                 await status_msg.edit_text(
-                    f"🔄 Кодирую в Opus {bitrate} kbps...",
+                    f"🔄 Кодирую в Opus {bitrate} kbps...\n"
+                    f"{mode_icon} Режим: {mode_text}\n"
+                    f"⏱️ Длительность: {duration_str}",
                     parse_mode='Markdown'
                 )
                 
-                success, error = self.encoder.encode_to_opus(input_path, output_path, bitrate_value)
+                success, error = self.encoder.encode_to_opus(
+                    input_path, output_path, bitrate_value, voice_mode=voice_mode
+                )
                 
                 if success and os.path.exists(output_path):
                     # Get file sizes
@@ -392,7 +499,9 @@ class TelegramAudioBot:
                     await status_msg.edit_text("📤 Отправляю файл...")
                     
                     caption = (
-                        f"✅ Закодировано в Opus {bitrate} kbps\n"
+                        f"✅ Opus {bitrate} kbps\n"
+                        f"{mode_icon} {mode_text}\n"
+                        f"⏱️ Длительность: {duration_str}\n"
                         f"📉 Сжатие: {compression_ratio:.1f}%\n"
                         f"📦 Размер: {output_size / 1024:.1f} KB"
                     )
@@ -406,10 +515,17 @@ class TelegramAudioBot:
                     
                     await status_msg.delete()
                 else:
+                    # Show detailed error
+                    error_preview = error[:200] + "..." if len(error) > 200 else error
                     await status_msg.edit_text(
-                        f"❌ Ошибка кодирования.\n"
-                        f"Попробуй другой файл или измени битрейт через /bitrate"
+                        f"❌ Ошибка кодирования:\n\n"
+                        f"`{error_preview}`\n\n"
+                        f"Попробуй другой файл или измени настройки:\n"
+                        f"• /bitrate - изменить битрейт\n"
+                        f"• /voice - изменить режим",
+                        parse_mode='Markdown'
                     )
+                    logger.error(f"Full encoding error for user {user_id}: {error}")
                     
         except Exception as e:
             logger.error(f"Error processing audio file: {str(e)}")
@@ -468,13 +584,26 @@ class TelegramAudioBot:
                 output_filename = Path(filename).stem + ".opus"
                 output_path = os.path.join(temp_dir, output_filename)
                 
+                # Get voice mode
+                voice_mode = self.user_settings.get(user_id, {}).get('voice_mode', DEFAULT_VOICE_MODE)
+                mode_icon = "🎤" if voice_mode else "🎵"
+                mode_text = "voip, mono" if voice_mode else "audio, stereo"
+                
+                # Get audio duration
+                duration_seconds = self.encoder.get_audio_duration(input_path)
+                duration_str = self.encoder.format_duration(duration_seconds)
+                
                 # Encode to Opus
                 await status_msg.edit_text(
-                    f"🔄 Кодирую в Opus {bitrate} kbps...",
+                    f"🔄 Кодирую в Opus {bitrate} kbps...\n"
+                    f"{mode_icon} Режим: {mode_text}\n"
+                    f"⏱️ Длительность: {duration_str}",
                     parse_mode='Markdown'
                 )
                 
-                success, error = self.encoder.encode_to_opus(input_path, output_path, bitrate_value)
+                success, error = self.encoder.encode_to_opus(
+                    input_path, output_path, bitrate_value, voice_mode=voice_mode
+                )
                 
                 if success and os.path.exists(output_path):
                     # Get file sizes
@@ -486,7 +615,9 @@ class TelegramAudioBot:
                     await status_msg.edit_text("📤 Отправляю файл...")
                     
                     caption = (
-                        f"✅ Закодировано в Opus {bitrate} kbps\n"
+                        f"✅ Opus {bitrate} kbps\n"
+                        f"{mode_icon} {mode_text}\n"
+                        f"⏱️ Длительность: {duration_str}\n"
                         f"📉 Сжатие: {compression_ratio:.1f}%\n"
                         f"📦 Размер: {output_size / 1024:.1f} KB"
                     )
@@ -500,10 +631,17 @@ class TelegramAudioBot:
                     
                     await status_msg.delete()
                 else:
+                    # Show detailed error
+                    error_preview = error[:200] + "..." if len(error) > 200 else error
                     await status_msg.edit_text(
-                        f"❌ Ошибка кодирования.\n"
-                        f"Попробуй другой файл или измени битрейт через /bitrate"
+                        f"❌ Ошибка кодирования:\n\n"
+                        f"`{error_preview}`\n\n"
+                        f"Попробуй другой файл или измени настройки:\n"
+                        f"• /bitrate - изменить битрейт\n"
+                        f"• /voice - изменить режим",
+                        parse_mode='Markdown'
                     )
+                    logger.error(f"Full encoding error for user {user_id}: {error}")
                     
         except requests.RequestException as e:
             logger.error(f"Error downloading from URL: {str(e)}")
@@ -521,6 +659,7 @@ class TelegramAudioBot:
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help_command))
         application.add_handler(CommandHandler("bitrate", self.bitrate_command))
+        application.add_handler(CommandHandler("voice", self.voice_command))
         application.add_handler(CommandHandler("settings", self.settings_command))
         
         # Handle bitrate selection
